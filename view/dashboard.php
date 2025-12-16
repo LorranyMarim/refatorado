@@ -1,5 +1,5 @@
 <?php
-require_once("../config/verifica_login.php");
+require_once("../config/verifica_index.php");
 ?>
 
 <!DOCTYPE html>

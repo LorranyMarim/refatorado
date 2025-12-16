@@ -20,7 +20,7 @@ if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
     
     <img id="logo-senai" src="../assets/logo_azul.png" alt="Logo" class="senai-logo">
 
-    <form id="login-form" action="../backend/login.php" method="POST" autocomplete="off" novalidate>
+    <form id="login-form" action="../backend/index.php" method="POST" autocomplete="off" novalidate>
       <p id="form-error" class="error-message" style="display:none;color:#d9534f;margin-bottom:10px;"></p>
 
       <div id="group-instituicao" class="input-group">
@@ -69,7 +69,7 @@ if (isset($_SESSION['loggedin']) && $_SESSION['loggedin'] === true) {
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      const API_INST_URL = "http://localhost:8000/api/instituicoes";
+      const API_INST_URL = "../backend/processa_instituicao.php";
 
       const form = document.getElementById("login-form");
       
