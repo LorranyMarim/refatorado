@@ -11,11 +11,12 @@ import time
 from datetime import timedelta
 from fastapi import Depends
 from auth_dep import get_ctx, RequestCtx
-from cache_utils import invalidate_cache 
+from cache_utils import invalidate_cache
+from redis_client import get_redis
+
 
 router = APIRouter()
 
-login_attempts = {}
 LOCK_MINUTES = 5
 MAX_ATTEMPTS = 5
 
@@ -49,36 +50,46 @@ def _oid_or_400(s: str) -> ObjectId:
 
 @router.post("/api/logout")
 def api_logout(response: Response):
-    response.delete_cookie("session_token", path="/")  # expira o cookie
+    response.delete_cookie("session_token", path="/") 
     return {"ok": True}
 
 @router.post("/api/login")
+@router.post("/api/login")
 def login(dados: UsuarioLogin, response: Response, request: Request):
     ip = request.client.host
-    now = time.time()
+    r = get_redis()
+    
+    key_attempts = f"login_attempts:{ip}"
+    key_blocked = f"login_blocked:{ip}"
 
-    la = login_attempts.get(ip, {'count': 0, 'last_time': now})
-    if la['count'] >= MAX_ATTEMPTS and (now - la['last_time'] < LOCK_MINUTES * 60):
+    if r.exists(key_blocked):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Muitas tentativas. Tente novamente em alguns minutos."
+            detail=f"Muitas tentativas. Tente novamente em {LOCK_MINUTES} minutos."
         )
-    if now - la['last_time'] >= LOCK_MINUTES * 60:
-        la = {'count': 0, 'last_time': now}
-    login_attempts[ip] = la
 
     db = get_mongo_db()
     usuario = db["usuario"].find_one({"user_name_lc": dados.user_name.lower()})
-
+    def registrar_falha():
+        attempts = r.incr(key_attempts)
+        if attempts == 1:
+            r.expire(key_attempts, 3600)
+            
+        if attempts >= MAX_ATTEMPTS:
+            r.setex(key_blocked, LOCK_MINUTES * 60, "blocked")
+            r.delete(key_attempts)
+    
     erro_login = HTTPException(status_code=401, detail="Usuário ou senha incorretos.")
     hash_salvo = (usuario or {}).get("senha")
+
+
+
     if not usuario or not hash_salvo or not verificar_senha(dados.senha, hash_salvo):
-        login_attempts[ip] = {'count': la['count'] + 1, 'last_time': now}
+        registrar_falha() 
         raise erro_login
-
-
-    login_attempts[ip] = {'count': 0, 'last_time': now}
-
+    
+    r.delete(key_attempts)
+    r.delete(key_blocked)
 
     inst_id_user = usuario.get("instituicao_id")
     inst_id_user = str(inst_id_user) if inst_id_user is not None else None
